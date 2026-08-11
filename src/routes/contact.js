@@ -50,4 +50,17 @@ router.get("/", requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /api/contact/:id — admin only, removes a single lead
+router.delete("/:id", requireAdmin, async (req, res) => {
+  try {
+    const deleted = await ContactSubmission.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Submission not found." });
+    }
+    res.json({ success: true, id: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete submission", details: err.message });
+  }
+});
+
 export default router;
