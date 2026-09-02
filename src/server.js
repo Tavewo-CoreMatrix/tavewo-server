@@ -13,6 +13,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://tavewo-client.vercel.app",
+      "https://tavewo.com"
     ],
     credentials: true,
   })
