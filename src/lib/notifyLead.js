@@ -1,13 +1,20 @@
 import nodemailer from "nodemailer";
 
-// Emails every new enquiry to the business operations mailbox.
+// Sends every new enquiry to the business operations mailbox.
 //
-// Settings (Render environment, never in the code):
-//   LEADS_EMAIL_TO    who receives leads (default businessops@tavewo.com)
-//   LEADS_EMAIL_FROM  sender shown on the email (default SMTP_USER)
-//   SMTP_HOST, SMTP_PORT (465 or 587), SMTP_USER, SMTP_PASS
+// Two ways, set in the Render environment (never in the code):
 //
-// If SMTP is not set, the lead is still saved and shows in the admin leads
+// 1. Google Apps Script (works on Render's free plan, which blocks SMTP):
+//      LEADS_WEBHOOK_URL     the script's Web app URL (ends in /exec)
+//      LEADS_WEBHOOK_SECRET  the same password as the script's LEADS_SECRET
+//    The script emails businessops@tavewo.com and adds a row to the Google
+//    Sheet of leads. See google-apps-script/leads.gs.
+//
+// 2. SMTP (paid Render instances only):
+//      SMTP_HOST, SMTP_PORT (465 or 587), SMTP_USER, SMTP_PASS
+//      LEADS_EMAIL_TO (default businessops@tavewo.com), LEADS_EMAIL_FROM
+//
+// If neither is set, the lead is still saved and shows in the admin leads
 // page; only the email is skipped. Sending never blocks saving.
 
 const SOURCE_LABELS = {
@@ -34,7 +41,7 @@ function getTransporter() {
 }
 
 export function isEmailConfigured() {
-  return Boolean(getTransporter());
+  return Boolean(process.env.LEADS_WEBHOOK_URL || getTransporter());
 }
 
 const escape = (s = "") =>
@@ -84,10 +91,47 @@ ${rows
   return { subject, text, html };
 }
 
+async function sendViaWebhook(lead, email) {
+  const utm = lead.utm || {};
+  const res = await fetch(process.env.LEADS_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      secret: process.env.LEADS_WEBHOOK_SECRET,
+      ...email,
+      lead: {
+        id: String(lead._id || ""),
+        createdAt: lead.createdAt,
+        fullName: lead.fullName,
+        companyName: lead.companyName,
+        phoneNumber: lead.phoneNumber,
+        workEmail: lead.workEmail,
+        projectType: lead.projectType,
+        message: lead.message,
+        sourceLabel: SOURCE_LABELS[lead.source] || lead.source || "Website",
+        campaign: [utm.source, utm.medium, utm.campaign].filter(Boolean).join(" / "),
+      },
+    }),
+    redirect: "follow",
+    signal: AbortSignal.timeout(20000),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.ok) return { sent: false, error: `Google script: ${body?.error || `HTTP ${res.status}`}` };
+  return { sent: true };
+}
+
 export async function notifyLead(lead) {
+  const email = buildLeadEmail(lead);
+  if (process.env.LEADS_WEBHOOK_URL) {
+    try {
+      return await sendViaWebhook(lead, email);
+    } catch (err) {
+      return { sent: false, error: `Google script: ${err.message}` };
+    }
+  }
   const t = getTransporter();
-  if (!t) return { sent: false, error: "Email not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)" };
-  const { subject, text, html } = buildLeadEmail(lead);
+  if (!t) return { sent: false, error: "Email not configured (LEADS_WEBHOOK_URL, or SMTP_HOST, SMTP_USER, SMTP_PASS)" };
+  const { subject, text, html } = email;
   try {
     await t.sendMail({
       from: process.env.LEADS_EMAIL_FROM || process.env.SMTP_USER,

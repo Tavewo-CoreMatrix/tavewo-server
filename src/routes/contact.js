@@ -97,12 +97,13 @@ router.post("/", rateLimit, async (req, res) => {
 
     // Email businessops@ in the background; the lead is already saved.
     notifyLead(submission)
-      .then((r) =>
-        ContactSubmission.updateOne(
+      .then((r) => {
+        console.log(`Lead ${submission._id}: email ${r.sent ? "sent" : `not sent (${r.error})`}`);
+        return ContactSubmission.updateOne(
           { _id: submission._id },
           r.sent ? { notifiedAt: new Date(), $unset: { notifyError: 1 } } : { notifyError: r.error }
-        )
-      )
+        );
+      })
       .catch((err) => console.error("Lead email failed:", err.message));
 
     res.status(201).json({ success: true, id: submission._id });
