@@ -46,7 +46,36 @@ npm run dev            # starts server on http://localhost:5000
 |--------|----------------|------------------------------|-----------------------------------------------|
 | GET    | `/api/health`  | none                         | Health check                                  |
 | POST   | `/api/contact` | none                         | Submit contact form (fullName, workEmail, message required) |
-| GET    | `/api/contact` | `x-admin-token` header       | List all submitted leads, newest first        |
+| GET    | `/api/contact` | `x-admin-token` header       | List all submitted leads, newest first (`?source=corematrix-landing` to filter) |
+| PATCH  | `/api/contact/:id` | `x-admin-token` header   | Set `status` (new / contacted / closed) and `notes` |
+| DELETE | `/api/contact/:id` | `x-admin-token` header   | Remove a lead                                 |
+
+## CoreMatrix landing page enquiries
+
+`POST /api/contact` with `source: "corematrix-landing"` requires full name,
+company, phone, email, what they need help with (`projectType`) and
+`consent: true`. Message is optional. UTM fields and the ad click ID are
+saved with the lead.
+
+Every new enquiry is emailed to businessops@tavewo.com. Render's free plan
+blocks SMTP, so on the free plan the email goes through a Google Apps Script
+in the company Google Workspace, which also adds the lead to a Google Sheet.
+
+**Free plan (current): Google Apps Script.** Follow the steps at the top of
+`google-apps-script/leads.gs`, then set in Render:
+
+| Variable | Value |
+|----------|-------|
+| `LEADS_WEBHOOK_URL` | the script's Web app URL (ends in `/exec`) |
+| `LEADS_WEBHOOK_SECRET` | the same password as the script's `LEADS_SECRET` |
+
+**Paid instance only: SMTP.** `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+`SMTP_PASS`, `LEADS_EMAIL_TO`, `LEADS_EMAIL_FROM`. Used only when
+`LEADS_WEBHOOK_URL` is not set.
+
+If neither is set the lead is still saved and shows on `/admin/contacts`;
+only the email is skipped (the lead shows "Email to businessops not sent").
+Render Logs show `Lead <id>: email sent` or the reason it was not sent.
 
 ## Admin access
 
